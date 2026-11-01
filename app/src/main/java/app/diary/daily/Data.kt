@@ -31,7 +31,7 @@ import java.time.ZoneId
 data class Item(val id: String, val title: String, val hint: String, val icon: Int)
 
 val ITEMS = listOf(
-    Item("face", "Упражнения для лица", "смотри видео, до двух раз за день", R.drawable.ic_face),
+    Item("face", "Упражнения для лица", "утром и вечером: три видео подряд", R.drawable.ic_face),
     Item("run", "Бег", "пробежка в своё удовольствие", R.drawable.ic_run),
     Item("steps", "15 тысяч шагов", "считаются сами", R.drawable.ic_steps),
     Item("gym", "Тренировка", "по желанию, смотри видео", R.drawable.ic_gym),
@@ -115,13 +115,21 @@ object Store {
         return commit(c, base, id, next)
     }
 
-    /** досмотрено видео: +1 к упражнениям для лица, не больше нормы за день */
+    /**
+     * Досмотрено видео упражнений. Одно выполнение (утро или вечер) = все видео из списка,
+     * каждое по разу. Когда набрался полный комплект, выполнение засчитывается (максимум два
+     * за день) и комплект обнуляется для следующего подхода.
+     */
     @Synchronized
     fun faceDone(c: Context, videoId: String): DayState {
         val base = load(c)
         Videos.markWatched(c, videoId)
         val cur = base.v["face"] ?: 0
         if (cur >= FACE_PER_DAY) return base
+        val all = Videos.list(c).filter { it.kind == "face" }.map { it.id }.toSet()
+        val got = Videos.sessionAdd(c, videoId)
+        if (all.isNotEmpty() && !got.containsAll(all)) return base
+        Videos.sessionReset(c)
         return commit(c, base, "face", cur + 1)
     }
 
@@ -315,6 +323,27 @@ object Videos {
         val today = LocalDate.now().toString()
         if (!raw.startsWith("$today:")) return emptySet()
         return raw.substringAfter(":").split(",").filter { it.isNotEmpty() }.toSet()
+    }
+
+    /** видео текущего (ещё не завершённого) подхода упражнений */
+    @Synchronized
+    fun session(c: Context): Set<String> {
+        val raw = prefs(c).getString("session", "") ?: ""
+        val today = LocalDate.now().toString()
+        if (!raw.startsWith("$today:")) return emptySet()
+        return raw.substringAfter(":").split(",").filter { it.isNotEmpty() }.toSet()
+    }
+
+    @Synchronized
+    fun sessionAdd(c: Context, id: String): Set<String> {
+        val s = session(c) + id
+        prefs(c).edit().putString("session", "${LocalDate.now()}:${s.joinToString(",")}").apply()
+        return s
+    }
+
+    @Synchronized
+    fun sessionReset(c: Context) {
+        prefs(c).edit().putString("session", "").apply()
     }
 
     @Synchronized

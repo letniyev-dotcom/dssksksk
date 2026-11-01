@@ -124,6 +124,10 @@ fun DiaryApp() {
 
     val playing = remember(playId) { playId?.let { id -> Videos.list(ctx).firstOrNull { it.id == id } } }
 
+    // состав подхода упражнений и что из него уже просмотрено (фиксируем на момент открытия видео)
+    val playSet = remember(playId) { Videos.list(ctx).filter { it.kind == "face" }.map { it.id }.toSet() }
+    val playSess = remember(playId) { Videos.session(ctx) }
+
     BackHandler(enabled = playing == null && section != null) { section = null }
 
     when {
@@ -132,6 +136,9 @@ fun DiaryApp() {
             video = playing,
             countNow = st.v[playing.kind] ?: 0,
             limit = limitOf(playing.kind),
+            total = if (playing.kind == "gym") 1 else playSet.size,
+            got = if (playing.kind == "gym") 0 else playSess.count { it in playSet },
+            dup = playing.kind != "gym" && playing.id in playSess,
             onCounted = {
                 st = Store.videoDone(ctx, playing.kind, playing.id)
                 st.v[playing.kind] ?: 0

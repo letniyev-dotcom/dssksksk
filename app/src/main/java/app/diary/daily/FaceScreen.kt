@@ -43,7 +43,9 @@ fun FaceScreen(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var list by remember { mutableStateOf(Videos.list(ctx).filter { it.kind == kind }) }
-    val watched = remember { Videos.watchedToday(ctx) }
+    val faceKind = kind != "gym"
+    // для упражнений показываем, что просмотрено в текущем подходе; для тренировки — за сегодня
+    val watched = remember { if (faceKind) Videos.session(ctx) else Videos.watchedToday(ctx) }
     var busy by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<String?>(null) }
@@ -82,7 +84,7 @@ fun FaceScreen(
                 )
                 BasicText("сегодня", style = TextStyle(color = p.mu, fontSize = 15.sp), modifier = Modifier.padding(start = 10.dp, bottom = 8.dp))
             }
-            BasicText("досмотри видео до конца, и засчитается", style = TextStyle(color = p.mu, fontSize = 14.sp))
+            BasicText(if (faceKind) "утром и вечером: досмотри все видео подряд, и подход засчитается" else "досмотри видео до конца, и засчитается", style = TextStyle(color = p.mu, fontSize = 14.sp))
             Spacer(Modifier.height(16.dp))
         }
 
@@ -109,7 +111,7 @@ fun FaceScreen(
                                     style = TextStyle(color = p.tx, fontSize = 16.sp, fontWeight = FontWeight.Medium),
                                 )
                                 BasicText(
-                                    if (done) "${fmtTime(v.durMs)} · сегодня смотрел" else fmtTime(v.durMs),
+                                    if (done) "${fmtTime(v.durMs)} · " + (if (faceKind) "в этом подходе" else "сегодня смотрел") else fmtTime(v.durMs),
                                     style = TextStyle(color = if (done) p.ac else p.mu, fontSize = 13.sp),
                                 )
                             }
