@@ -7,7 +7,16 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -30,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FaceScreen(
     p: Palette,
@@ -46,6 +56,10 @@ fun FaceScreen(
     val faceKind = kind != "gym"
     // для упражнений показываем, что просмотрено в текущем подходе; для тренировки — за сегодня
     val watched = remember { if (faceKind) Videos.session(ctx) else Videos.watchedToday(ctx) }
+    val listState = rememberLazyListState()
+    val haptic = LocalHapticFeedback.current
+    var dragId by remember { mutableStateOf<String?>(null) }
+    var dragDy by remember { mutableFloatStateOf(0f) }
     var busy by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<String?>(null) }
@@ -96,11 +110,72 @@ fun FaceScreen(
                     BasicText("добавь свои, и они будут здесь", style = TextStyle(color = p.mu, fontSize = 14.sp, textAlign = TextAlign.Center))
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize().padding(horizontal = 28.dp)) {
+                LazyColumn(Modifier.fillMaxSize().padding(horizontal = 28.dp), state = listState) {
+                    if (list.size > 1) {
+                        item(key = "hint") {
+                            BasicText(
+                                "зажми видео и перетащи, чтобы поменять порядок",
+                                style = TextStyle(color = p.mu, fontSize = 13.sp),
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                        }
+                    }
                     items(list, key = { it.id }) { v ->
                         val done = v.id in watched
+                        val dragging = dragId == v.id
                         Row(
-                            Modifier.fillMaxWidth().padding(vertical = 8.dp).press { confirm = null; onPlay(v) },
+                            Modifier.fillMaxWidth()
+                                .then(if (dragging) Modifier else Modifier.animateItemPlacement())
+                                .zIndex(if (dragging) 1f else 0f)
+                                .graphicsLayer {
+                                    translationY = if (dragging) dragDy else 0f
+                                    val sc = if (dragging) 1.03f else 1f
+                                    scaleX = sc; scaleY = sc
+                                }
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (dragging) p.tx.copy(alpha = 0.08f) else Color.Transparent)
+                                .press { confirm = null; onPlay(v) }
+                                .padding(vertical = 8.dp, horizontal = 6.dp)
+                                .pointerInput(v.id) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            confirm = null
+                                            dragId = v.id; dragDy = 0f
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            dragDy += amount.y
+                                            val infos = listState.layoutInfo.visibleItemsInfo
+                                            val me = infos.firstOrNull { it.key == v.id }
+                                            if (me != null) {
+                                                val center = me.offset + me.size / 2f + dragDy
+                                                val target = infos.firstOrNull {
+                                                    it.key != v.id && it.key != "hint" &&
+                                                        center >= it.offset && center < it.offset + it.size
+                                                }
+                                                if (target != null) {
+                                                    val from = list.indexOfFirst { it.id == v.id }
+                                                    val to = list.indexOfFirst { it.id == target.key }
+                                                    if (from >= 0 && to >= 0 && from != to) {
+                                                        val m = list.toMutableList()
+                                                        m.add(to, m.removeAt(from))
+                                                        list = m
+                                                        dragDy += (me.offset - target.offset).toFloat()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            dragId = null; dragDy = 0f
+                                            Videos.reorder(ctx, list.map { it.id })
+                                        },
+                                        onDragCancel = {
+                                            dragId = null; dragDy = 0f
+                                            Videos.reorder(ctx, list.map { it.id })
+                                        },
+                                    )
+                                },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Thumb(v, p.mu, Modifier.size(width = 96.dp, height = 60.dp))

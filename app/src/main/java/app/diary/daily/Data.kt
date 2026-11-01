@@ -308,6 +308,15 @@ object Videos {
         return v
     }
 
+    /** сохраняет новый порядок видео одного вида (id в нужной последовательности) */
+    @Synchronized
+    fun reorder(c: Context, ids: List<String>) {
+        val all = list(c)
+        val byId = all.associateBy { it.id }
+        val moved = ids.mapNotNull { byId[it] }
+        saveList(c, all.filter { it.id !in ids } + moved)
+    }
+
     @Synchronized
     fun remove(c: Context, id: String) {
         val all = list(c)

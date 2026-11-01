@@ -251,23 +251,25 @@ fun PlayerScreen(
                     }
                 }
 
-                // низ: полоса и время на небольшой плашке
-                Column(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp)
-                        .clip(RoundedCornerShape(20.dp)).background(chip)
-                        .padding(horizontal = 18.dp, vertical = 8.dp),
+                // низ: компактный округлый островок, время по краям полосы
+                val shown = drag?.let { (it * dur / 1000).toLong() } ?: posSec
+                val timeStyle = TextStyle(color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+                Row(
+                    Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp).padding(bottom = 16.dp)
+                        .widthIn(max = 320.dp).fillMaxWidth()
+                        .clip(CircleShape).background(chip)
+                        .padding(horizontal = 18.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Seek(
-                        pos = { pos.longValue }, dur = dur, ac = p.ac, mark = COUNT_AT, showMark = !skip,
-                        drag = drag, onDrag = { drag = it; touch++ },
-                        onSeek = { player.seekTo(it); pos.longValue = it; touch++ },
-                    )
-                    val shown = drag?.let { (it * dur / 1000).toLong() } ?: posSec
-                    Row(Modifier.fillMaxWidth()) {
-                        BasicText(fmtTime(shown * 1000), style = TextStyle(color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp))
-                        Spacer(Modifier.weight(1f))
-                        BasicText(fmtTime(dur), style = TextStyle(color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp))
+                    BasicText(fmtTime(shown * 1000), style = timeStyle)
+                    Box(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                        Seek(
+                            pos = { pos.longValue }, dur = dur, ac = p.ac, mark = COUNT_AT, showMark = !skip,
+                            drag = drag, onDrag = { drag = it; touch++ },
+                            onSeek = { player.seekTo(it); pos.longValue = it; touch++ },
+                        )
                     }
+                    BasicText(fmtTime(dur), style = timeStyle)
                 }
             }
         }
@@ -291,7 +293,7 @@ private fun Seek(
 ) {
     val curDrag by rememberUpdatedState(drag)
     Canvas(
-        Modifier.fillMaxWidth().height(32.dp)
+        Modifier.fillMaxWidth().height(28.dp)
             .pointerInput(dur) {
                 detectTapGestures { o -> if (dur > 0) onSeek(((o.x / size.width).coerceIn(0f, 1f) * dur).toLong()) }
             }
