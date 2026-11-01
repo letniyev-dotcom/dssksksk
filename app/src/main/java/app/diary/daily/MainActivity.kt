@@ -64,7 +64,7 @@ fun DiaryApp() {
     var steps by remember { mutableIntStateOf(Steps.today(ctx)) }
     val hasSensor = remember { Steps.hasSensor(ctx) }
     var perm by remember { mutableStateOf(Steps.hasPermission(ctx)) }
-    var inFace by rememberSaveable { mutableStateOf(false) }
+    var section by rememberSaveable { mutableStateOf<String?>(null) } // "face" / "gym"
     var playId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { perm = it }
@@ -124,24 +124,27 @@ fun DiaryApp() {
 
     val playing = remember(playId) { playId?.let { id -> Videos.list(ctx).firstOrNull { it.id == id } } }
 
-    BackHandler(enabled = playing == null && inFace) { inFace = false }
+    BackHandler(enabled = playing == null && section != null) { section = null }
 
     when {
         playing != null -> PlayerScreen(
             p = p,
             video = playing,
-            countNow = st.v["face"] ?: 0,
+            countNow = st.v[playing.kind] ?: 0,
+            limit = limitOf(playing.kind),
             onCounted = {
-                st = Store.faceDone(ctx, playing.id)
-                st.v["face"] ?: 0
+                st = Store.videoDone(ctx, playing.kind, playing.id)
+                st.v[playing.kind] ?: 0
             },
             onClose = { playId = null },
         )
-        inFace -> FaceScreen(
+        section != null -> FaceScreen(
             p = p,
-            count = st.v["face"] ?: 0,
-            onBack = { inFace = false },
+            kind = section!!,
+            count = st.v[section!!] ?: 0,
+            onBack = { section = null },
             onPlay = { playId = it.id },
+            onManual = if (section == "gym") ({ st = Store.tap(ctx, "gym") }) else null,
         )
         else -> TodayScreen(
             p = p,
@@ -149,7 +152,7 @@ fun DiaryApp() {
             steps = steps,
             hasSensor = hasSensor,
             hasPerm = perm,
-            onFace = { inFace = true },
+            onFace = { section = it },
             onTap = { id, n -> st = Store.tap(ctx, id, n) },
             onStepsTap = {
                 if (!perm) {
@@ -174,7 +177,7 @@ fun TodayScreen(
     steps: Int,
     hasSensor: Boolean,
     hasPerm: Boolean,
-    onFace: () -> Unit,
+    onFace: (String) -> Unit,
     onTap: (String, Int) -> Unit,
     onStepsTap: () -> Unit,
 ) {
@@ -225,7 +228,7 @@ fun TodayScreen(
                         Modifier.fillMaxWidth().then(
                             when (item.id) {
                                 "water" -> Modifier
-                                "face" -> Modifier.press { onFace() }
+                                "face", "gym" -> Modifier.press { onFace(item.id) }
                                 "steps" -> Modifier.press { onStepsTap() }
                                 else -> Modifier.press { onTap(item.id, 0) }
                             }

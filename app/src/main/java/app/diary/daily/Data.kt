@@ -34,7 +34,7 @@ val ITEMS = listOf(
     Item("face", "Упражнения для лица", "смотри видео, до двух раз за день", R.drawable.ic_face),
     Item("run", "Бег", "пробежка в своё удовольствие", R.drawable.ic_run),
     Item("steps", "15 тысяч шагов", "считаются сами", R.drawable.ic_steps),
-    Item("gym", "Тренировка", "по желанию, без давления", R.drawable.ic_gym),
+    Item("gym", "Тренировка", "по желанию, смотри видео", R.drawable.ic_gym),
     Item("water", "Вода", "8 стаканов за день", R.drawable.ic_water),
     Item("food", "Правильное питание", "ешь вкусно и без спешки", R.drawable.ic_food),
     Item("sugar", "Без сахара", "сладкое подождёт до завтра", R.drawable.ic_sugar),
@@ -50,6 +50,8 @@ data class DayState(
 )
 
 const val FACE_PER_DAY = 2
+
+fun limitOf(kind: String) = if (kind == "gym") 1 else FACE_PER_DAY
 
 private fun need(id: String) = if (id == "water") 8 else 1
 
@@ -122,6 +124,18 @@ object Store {
         if (cur >= FACE_PER_DAY) return base
         return commit(c, base, "face", cur + 1)
     }
+
+    /** досмотрено видео тренировки: засчитывает «Тренировку» */
+    @Synchronized
+    fun gymDone(c: Context, videoId: String): DayState {
+        val base = load(c)
+        Videos.markWatched(c, videoId)
+        if ((base.v["gym"] ?: 0) >= 1) return base
+        return commit(c, base, "gym", 1)
+    }
+
+    fun videoDone(c: Context, kind: String, videoId: String): DayState =
+        if (kind == "gym") gymDone(c, videoId) else faceDone(c, videoId)
 
     /** цель по шагам выполняется только по реальному счёту */
     @Synchronized
@@ -220,7 +234,7 @@ object Steps {
 
 // ---------- видео ----------
 
-data class Video(val id: String, val name: String, val file: String, val durMs: Long)
+data class Video(val id: String, val name: String, val file: String, val durMs: Long, val kind: String = "face")
 
 object Videos {
     private fun prefs(c: Context) = c.getSharedPreferences("videos", Context.MODE_PRIVATE)
@@ -232,14 +246,14 @@ object Videos {
         val arr = try { JSONArray(prefs(c).getString("list", "[]")) } catch (e: Exception) { JSONArray() }
         return (0 until arr.length()).mapNotNull {
             val o = arr.optJSONObject(it) ?: return@mapNotNull null
-            Video(o.getString("id"), o.getString("name"), o.getString("file"), o.optLong("dur", 0L))
+            Video(o.getString("id"), o.getString("name"), o.getString("file"), o.optLong("dur", 0L), o.optString("kind", "face"))
         }.filter { file(c, it).exists() }
     }
 
     private fun saveList(c: Context, l: List<Video>) {
         val arr = JSONArray()
         l.forEach {
-            arr.put(JSONObject().put("id", it.id).put("name", it.name).put("file", it.file).put("dur", it.durMs))
+            arr.put(JSONObject().put("id", it.id).put("name", it.name).put("file", it.file).put("dur", it.durMs).put("kind", it.kind))
         }
         prefs(c).edit().putString("list", arr.toString()).apply()
     }
@@ -257,7 +271,7 @@ object Videos {
     }
 
     /** копирует видео в память приложения, чтобы оно не пропало вместе с исходным файлом */
-    fun add(c: Context, uri: Uri): Video? {
+    fun add(c: Context, uri: Uri, kind: String = "face"): Video? {
         val dir = File(c.filesDir, "videos").apply { mkdirs() }
         val raw = displayName(c, uri)
         val ext = raw.substringAfterLast('.', "mp4").lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { "mp4" }
@@ -281,7 +295,7 @@ object Videos {
         } finally {
             r.release()
         }
-        val v = Video(id, raw.substringBeforeLast('.'), f.name, dur)
+        val v = Video(id, raw.substringBeforeLast('.'), f.name, dur, kind)
         synchronized(this) { saveList(c, list(c) + v) }
         return v
     }

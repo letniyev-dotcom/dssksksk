@@ -31,10 +31,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun FaceScreen(p: Palette, count: Int, onBack: () -> Unit, onPlay: (Video) -> Unit) {
+fun FaceScreen(
+    p: Palette,
+    kind: String,
+    count: Int,
+    onBack: () -> Unit,
+    onPlay: (Video) -> Unit,
+    onManual: (() -> Unit)? = null,
+) {
+    val limit = limitOf(kind)
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var list by remember { mutableStateOf(Videos.list(ctx)) }
+    var list by remember { mutableStateOf(Videos.list(ctx).filter { it.kind == kind }) }
     val watched = remember { Videos.watchedToday(ctx) }
     var busy by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
@@ -45,8 +53,8 @@ fun FaceScreen(p: Palette, count: Int, onBack: () -> Unit, onPlay: (Video) -> Un
             busy = true
             failed = false
             scope.launch {
-                val ok = withContext(Dispatchers.IO) { uris.map { Videos.add(ctx, it) }.count { it != null } }
-                list = Videos.list(ctx)
+                val ok = withContext(Dispatchers.IO) { uris.map { Videos.add(ctx, it, kind) }.count { it != null } }
+                list = Videos.list(ctx).filter { it.kind == kind }
                 failed = ok < uris.size
                 busy = false
             }
@@ -59,7 +67,7 @@ fun FaceScreen(p: Palette, count: Int, onBack: () -> Unit, onPlay: (Video) -> Un
                 Image(painterResource(R.drawable.ic_back), null, Modifier.size(24.dp), colorFilter = ColorFilter.tint(p.tx))
             }
             BasicText(
-                "Упражнения",
+                if (kind == "gym") "Тренировка" else "Упражнения",
                 modifier = Modifier.align(Alignment.Center),
                 style = TextStyle(color = p.tx, fontSize = 16.sp, fontWeight = FontWeight.Medium),
             )
@@ -68,7 +76,10 @@ fun FaceScreen(p: Palette, count: Int, onBack: () -> Unit, onPlay: (Video) -> Un
         Column(Modifier.padding(horizontal = 28.dp)) {
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.Bottom) {
-                BasicText("$count из $FACE_PER_DAY", style = TextStyle(color = if (count >= FACE_PER_DAY) p.ac else p.tx, fontSize = 40.sp, fontWeight = FontWeight.Light))
+                BasicText(
+                    if (limit == 1) (if (count >= 1) "Готово" else "Не засчитана") else "$count из $limit",
+                    style = TextStyle(color = if (count >= limit) p.ac else p.tx, fontSize = 40.sp, fontWeight = FontWeight.Light),
+                )
                 BasicText("сегодня", style = TextStyle(color = p.mu, fontSize = 15.sp), modifier = Modifier.padding(start = 10.dp, bottom = 8.dp))
             }
             BasicText("досмотри видео до конца, и засчитается", style = TextStyle(color = p.mu, fontSize = 14.sp))
@@ -106,7 +117,7 @@ fun FaceScreen(p: Palette, count: Int, onBack: () -> Unit, onPlay: (Video) -> Un
                                 BasicText(
                                     "удалить?",
                                     modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(p.ac.copy(alpha = 0.14f))
-                                        .press { Videos.remove(ctx, v.id); list = Videos.list(ctx); confirm = null }
+                                        .press { Videos.remove(ctx, v.id); list = Videos.list(ctx).filter { it.kind == kind }; confirm = null }
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                     style = TextStyle(color = p.ac, fontSize = 13.sp, fontWeight = FontWeight.Medium),
                                 )
@@ -124,6 +135,21 @@ fun FaceScreen(p: Palette, count: Int, onBack: () -> Unit, onPlay: (Video) -> Un
         Column(Modifier.padding(horizontal = 28.dp).padding(bottom = 16.dp, top = 8.dp)) {
             if (failed) {
                 BasicText("часть видео не добавилась", style = TextStyle(color = p.mu, fontSize = 13.sp), modifier = Modifier.padding(bottom = 8.dp))
+            }
+            if (onManual != null) {
+                Row(
+                    Modifier.fillMaxWidth().height(52.dp).padding(bottom = 8.dp).clip(RoundedCornerShape(14.dp))
+                        .background(p.tx.copy(alpha = 0.06f)).press { onManual() },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Image(painterResource(R.drawable.ic_check), null, Modifier.size(20.dp), colorFilter = ColorFilter.tint(p.ac))
+                    Spacer(Modifier.width(10.dp))
+                    BasicText(
+                        if (count >= 1) "Снять отметку" else "Отметить без видео",
+                        style = TextStyle(color = p.tx, fontSize = 16.sp, fontWeight = FontWeight.Medium),
+                    )
+                }
             }
             Row(
                 Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(14.dp))

@@ -55,6 +55,7 @@ fun PlayerScreen(
     p: Palette,
     video: Video,
     countNow: Int,
+    limit: Int,
     onCounted: () -> Int,
     onClose: () -> Unit,
 ) {
@@ -75,7 +76,7 @@ fun PlayerScreen(
     var watched by remember { mutableLongStateOf(0L) }
     var counted by remember { mutableStateOf(false) }
     var count by remember { mutableIntStateOf(countNow) }
-    val full = countNow >= FACE_PER_DAY
+    val full = countNow >= limit
 
     // плеер
     DisposableEffect(player) {
@@ -197,8 +198,8 @@ fun PlayerScreen(
                 // статус зачёта
                 val frac = if (dur > 0) (watched.toFloat() / (dur * COUNT_AT)).coerceIn(0f, 1f) else 0f
                 val statusText = when {
-                    counted -> "Засчитано · $count из $FACE_PER_DAY"
-                    full -> "$FACE_PER_DAY из $FACE_PER_DAY сегодня"
+                    counted -> if (limit == 1) "Засчитано" else "Засчитано · $count из $limit"
+                    full -> if (limit == 1) "Уже засчитано сегодня" else "$limit из $limit сегодня"
                     else -> "Просмотр ${(frac * 100).toInt()}%"
                 }
                 Row(
