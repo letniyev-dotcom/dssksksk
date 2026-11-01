@@ -7,6 +7,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -34,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +44,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import java.time.LocalDate
@@ -130,10 +136,43 @@ fun DiaryApp() {
     val playSet = remember(playId) { Videos.list(ctx).filter { it.kind == "face" }.map { it.id }.toSet() }
     val playSess = remember(playId) { Videos.session(ctx) }
 
+    // следующее видео в том же списке и порядке, что на экране со списком
+    val nextVideo = remember(playId) {
+        playing?.let { cur ->
+            val l = Videos.list(ctx).filter { it.kind == cur.kind }
+            l.getOrNull(l.indexOfFirst { it.id == cur.id } + 1)
+        }
+    }
+    // режим плеера переносится на следующее видео
+    var playLandscape by remember { mutableStateOf(false) }
+    var playFill by remember { mutableStateOf(false) }
+
+    // пока открыт плеер: экран не гаснет, системные панели скрыты; на выходе всё возвращается
+    val inPlayer = playing != null
+    val hostView = LocalView.current
+    DisposableEffect(inPlayer) {
+        val act = ctx as? Activity
+        val ctrl = act?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        if (inPlayer) {
+            hostView.keepScreenOn = true
+            ctrl?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            ctrl?.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            if (inPlayer) {
+                hostView.keepScreenOn = false
+                ctrl?.show(WindowInsetsCompat.Type.systemBars())
+                act?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                playLandscape = false
+                playFill = false
+            }
+        }
+    }
+
     BackHandler(enabled = playing == null && section != null) { section = null }
 
     when {
-        playing != null -> PlayerScreen(
+        playing != null -> key(playing.id) { PlayerScreen(
             p = p,
             video = playing,
             countNow = st.v[playing.kind] ?: 0,
@@ -145,8 +184,13 @@ fun DiaryApp() {
                 st = Store.videoDone(ctx, playing.kind, playing.id)
                 st.v[playing.kind] ?: 0
             },
+            next = nextVideo,
+            startLandscape = playLandscape,
+            startFill = playFill,
+            onMode = { l, f -> playLandscape = l; playFill = f },
+            onNext = { nextVideo?.let { playId = it.id } },
             onClose = { playId = null },
-        )
+        ) }
         section != null -> FaceScreen(
             p = p,
             kind = section!!,

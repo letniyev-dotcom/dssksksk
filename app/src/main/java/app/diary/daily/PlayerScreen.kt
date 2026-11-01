@@ -6,6 +6,9 @@ import android.net.Uri
 import android.view.SurfaceView
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -65,6 +68,11 @@ fun PlayerScreen(
     total: Int,       // сколько видео в одном подходе
     got: Int,         // сколько из них уже просмотрено в текущем подходе
     dup: Boolean,     // это видео уже смотрели в текущем подходе
+    next: Video?,     // следующее видео в списке (или null, если это последнее)
+    startLandscape: Boolean,
+    startFill: Boolean,
+    onMode: (landscape: Boolean, fill: Boolean) -> Unit,
+    onNext: () -> Unit,
     onCounted: () -> Int,
     onClose: () -> Unit,
 ) {
@@ -77,14 +85,15 @@ fun PlayerScreen(
     var playing by remember { mutableStateOf(false) }
     var ended by remember { mutableStateOf(false) }
     val pos = remember { mutableLongStateOf(0L) }
+    var coarse by remember { mutableLongStateOf(0L) } // позиция раз в 100 мс, не зависит от видимости панели
     val posSec by remember { derivedStateOf { pos.longValue / 1000 } }
     var drag by remember { mutableStateOf<Float?>(null) }
     var dur by remember { mutableLongStateOf(video.durMs) }
     var ratio by remember { mutableFloatStateOf(16f / 9f) }
     var controls by remember { mutableStateOf(true) }
     var touch by remember { mutableIntStateOf(0) }
-    var landscape by remember { mutableStateOf(false) }
-    var fill by remember { mutableStateOf(false) }      // безрамочный режим: видео на весь экран с обрезкой
+    var landscape by remember { mutableStateOf(startLandscape) }
+    var fill by remember { mutableStateOf(startFill) }      // безрамочный режим: видео на весь экран с обрезкой
     var hint by remember { mutableStateOf<String?>(null) }
     val haptic = LocalHapticFeedback.current
     var watched by remember { mutableLongStateOf(0L) }
@@ -120,19 +129,6 @@ fun PlayerScreen(
         onDispose { owner.lifecycle.removeObserver(obs) }
     }
 
-    // экран не гаснет, системные панели скрыты, на выходе всё возвращается
-    DisposableEffect(Unit) {
-        view.keepScreenOn = true
-        val w = activity?.window
-        val ctrl = w?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        ctrl?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        ctrl?.hide(WindowInsetsCompat.Type.systemBars())
-        onDispose {
-            view.keepScreenOn = false
-            ctrl?.show(WindowInsetsCompat.Type.systemBars())
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-    }
     LaunchedEffect(landscape) {
         activity?.requestedOrientation =
             if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -161,6 +157,7 @@ fun PlayerScreen(
         while (true) {
             delay(100)
             val now = player.currentPosition
+            coarse = now
             if (player.isPlaying) {
                 val d = now - last
                 if (d in 1..600) watched += d
@@ -235,6 +232,38 @@ fun PlayerScreen(
                 modifier = Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 16.dp, vertical = 8.dp),
                 style = TextStyle(color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium),
             )
+        }
+
+        // плашка «дальше»: ближе к концу (за минуту, у коротких роликов раньше), после зачёта
+        val nearEnd = dur > 0 && dur - coarse <= minOf(60_000L, dur / 3)
+        val showNext = next != null && nearEnd && (counted || skip || ended)
+        val nextBottom by animateDpAsState(if (controls) 76.dp else 24.dp, label = "nextBottom")
+        AnimatedVisibility(
+            showNext, enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier.align(Alignment.BottomCenter).displayCutoutPadding()
+                .padding(horizontal = 24.dp).padding(bottom = nextBottom),
+        ) {
+            if (next != null) {
+                Row(
+                    Modifier.widthIn(max = 320.dp).fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp)).background(Color.Black.copy(alpha = 0.6f))
+                        .press { onMode(landscape, fill); onNext() }
+                        .padding(start = 18.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        BasicText("Следующее видео", style = TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp))
+                        BasicText(
+                            next.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            style = TextStyle(color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(p.ac), contentAlignment = Alignment.Center) {
+                        Image(painterResource(R.drawable.ic_next), null, Modifier.size(22.dp), colorFilter = ColorFilter.tint(p.bg))
+                    }
+                }
+            }
         }
 
         AnimatedVisibility(controls, enter = fadeIn(), exit = fadeOut()) {
