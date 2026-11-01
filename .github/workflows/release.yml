@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+
+      - name: Build signed release apk
+        run: gradle assembleRelease --no-daemon
+
+      - name: Rename apk
+        run: cp app/build/outputs/apk/release/app-release.apk diary-1.0.${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diary-release
+          path: diary-1.0.${{ github.run_number }}.apk
+
+      - name: Publish github release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Дневник 1.0.${{ github.run_number }}
+          files: diary-1.0.${{ github.run_number }}.apk
