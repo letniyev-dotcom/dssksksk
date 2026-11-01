@@ -11,6 +11,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -26,7 +29,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
@@ -42,6 +47,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -78,6 +84,9 @@ fun PlayerScreen(
     var controls by remember { mutableStateOf(true) }
     var touch by remember { mutableIntStateOf(0) }
     var landscape by remember { mutableStateOf(false) }
+    var fill by remember { mutableStateOf(false) }      // безрамочный режим: видео на весь экран с обрезкой
+    var hint by remember { mutableStateOf<String?>(null) }
+    val haptic = LocalHapticFeedback.current
     var watched by remember { mutableLongStateOf(0L) }
     var counted by remember { mutableStateOf(false) }
     var count by remember { mutableIntStateOf(countNow) }
@@ -129,6 +138,14 @@ fun PlayerScreen(
             if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }
 
+    LaunchedEffect(fill) {
+        player.videoScalingMode =
+            if (fill) C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING else C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+    }
+    LaunchedEffect(hint) {
+        if (hint != null) { delay(1200); hint = null }
+    }
+
     // плавная позиция: обновляется каждый кадр, пока панель видна (читается только при отрисовке)
     LaunchedEffect(controls) {
         if (controls) {
@@ -169,11 +186,54 @@ fun PlayerScreen(
 
     val iconTint = ColorFilter.tint(Color.White)
     val chip = Color.Black.copy(alpha = 0.45f)
-    Box(Modifier.fillMaxSize().background(Color.Black).press { controls = !controls }) {
+    Box(
+        Modifier.fillMaxSize().background(Color.Black).press { controls = !controls }
+            // щипок двумя пальцами: разводим, чтобы заполнить экран, сводим, чтобы вернуть как было
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var acc = 1f
+                    var done = false
+                    do {
+                        val ev = awaitPointerEvent()
+                        if (ev.changes.size >= 2) {
+                            ev.changes.forEach { it.consume() }
+                            if (!done) {
+                                acc *= ev.calculateZoom()
+                                val want = when {
+                                    acc > 1.15f -> true
+                                    acc < 0.87f -> false
+                                    else -> null
+                                }
+                                if (want != null) {
+                                    done = true
+                                    if (want != fill) {
+                                        fill = want
+                                        hint = if (want) "На весь экран" else "По размеру видео"
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    }
+                                }
+                            }
+                        }
+                    } while (ev.changes.any { it.pressed })
+                }
+            },
+    ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             AndroidView(
                 factory = { c -> SurfaceView(c).also { player.setVideoSurfaceView(it) } },
-                modifier = Modifier.aspectRatio(ratio),
+                modifier = if (fill) Modifier.fillMaxSize() else Modifier.aspectRatio(ratio),
+            )
+        }
+
+        AnimatedVisibility(
+            hint != null, enter = fadeIn(), exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter).displayCutoutPadding().padding(top = 120.dp),
+        ) {
+            BasicText(
+                hint ?: "",
+                modifier = Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 16.dp, vertical = 8.dp),
+                style = TextStyle(color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium),
             )
         }
 

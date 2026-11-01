@@ -10,9 +10,9 @@ import androidx.compose.ui.graphics.Color
 class Palette(val bg: Color, val tx: Color, val mu: Color, val ac: Color)
 
 fun palette(dark: Boolean) = if (dark) {
-    Palette(Color(0xFF141311), Color(0xFFF1EDE7), Color(0xFF6B665F), Color(0xFFFF8A6B))
+    Palette(Color(0xFF141311), Color(0xFFF1EDE7), Color(0xFF6B665F), Color(0xFFF09A89))
 } else {
-    Palette(Color(0xFFFAF8F5), Color(0xFF1D1B19), Color(0xFFB9B3AB), Color(0xFFE0674A))
+    Palette(Color(0xFFFAF8F5), Color(0xFF1D1B19), Color(0xFFB9B3AB), Color(0xFFD4705F))
 }
 
 @Composable

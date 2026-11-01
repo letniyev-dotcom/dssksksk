@@ -91,14 +91,30 @@ fun FaceScreen(
 
         Column(Modifier.padding(horizontal = 28.dp)) {
             Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
+            if (limit == 1) {
                 BasicText(
-                    if (limit == 1) (if (count >= 1) "Готово" else "Не засчитана") else "$count из $limit",
-                    style = TextStyle(color = if (count >= limit) p.ac else p.tx, fontSize = 40.sp, fontWeight = FontWeight.Light),
+                    if (count >= 1) "Готово" else "Не засчитана",
+                    maxLines = 1, softWrap = false,
+                    style = TextStyle(color = if (count >= 1) p.ac else p.tx, fontSize = 36.sp, fontWeight = FontWeight.Light),
                 )
-                BasicText("сегодня", style = TextStyle(color = p.mu, fontSize = 15.sp), modifier = Modifier.padding(start = 10.dp, bottom = 8.dp))
+            } else {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    BasicText(
+                        "$count из $limit",
+                        maxLines = 1, softWrap = false,
+                        style = TextStyle(color = if (count >= limit) p.ac else p.tx, fontSize = 40.sp, fontWeight = FontWeight.Light),
+                    )
+                    BasicText(
+                        "сегодня", maxLines = 1, softWrap = false,
+                        style = TextStyle(color = p.mu, fontSize = 15.sp), modifier = Modifier.padding(start = 10.dp, bottom = 8.dp),
+                    )
+                }
             }
-            BasicText(if (faceKind) "утром и вечером: досмотри все видео подряд, и подход засчитается" else "досмотри видео до конца, и засчитается", style = TextStyle(color = p.mu, fontSize = 14.sp))
+            BasicText(
+                if (faceKind) "досмотри все видео подряд" else "досмотри видео до конца, и засчитается",
+                maxLines = 1, softWrap = false,
+                style = TextStyle(color = p.mu, fontSize = 14.sp),
+            )
             Spacer(Modifier.height(16.dp))
         }
 
@@ -114,7 +130,8 @@ fun FaceScreen(
                     if (list.size > 1) {
                         item(key = "hint") {
                             BasicText(
-                                "зажми видео и перетащи, чтобы поменять порядок",
+                                "зажми и перетащи, чтобы поменять порядок",
+                                maxLines = 1, softWrap = false,
                                 style = TextStyle(color = p.mu, fontSize = 13.sp),
                                 modifier = Modifier.padding(bottom = 4.dp),
                             )
@@ -209,40 +226,43 @@ fun FaceScreen(
             }
         }
 
-        Column(Modifier.padding(horizontal = 28.dp).padding(bottom = 16.dp, top = 8.dp)) {
+        Column(
+            Modifier.padding(horizontal = 28.dp).padding(bottom = 16.dp, top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             if (failed) {
-                BasicText("часть видео не добавилась", style = TextStyle(color = p.mu, fontSize = 13.sp), modifier = Modifier.padding(bottom = 8.dp))
+                BasicText("часть видео не добавилась", style = TextStyle(color = p.mu, fontSize = 13.sp))
             }
             if (onManual != null) {
-                Row(
-                    Modifier.fillMaxWidth().height(52.dp).padding(bottom = 8.dp).clip(RoundedCornerShape(14.dp))
-                        .background(p.tx.copy(alpha = 0.06f)).press { onManual() },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Image(painterResource(R.drawable.ic_check), null, Modifier.size(20.dp), colorFilter = ColorFilter.tint(p.ac))
-                    Spacer(Modifier.width(10.dp))
-                    BasicText(
-                        if (count >= 1) "Снять отметку" else "Отметить без видео",
-                        style = TextStyle(color = p.tx, fontSize = 16.sp, fontWeight = FontWeight.Medium),
-                    )
-                }
+                ActionButton(
+                    p, R.drawable.ic_check,
+                    if (count >= 1) "Снять отметку" else "Отметить без видео",
+                ) { onManual() }
             }
-            Row(
-                Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(14.dp))
-                    .background(p.tx.copy(alpha = 0.06f))
-                    .press { if (!busy) picker.launch(arrayOf("video/*")) },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Image(painterResource(R.drawable.ic_plus), null, Modifier.size(20.dp), colorFilter = ColorFilter.tint(p.ac))
-                Spacer(Modifier.width(10.dp))
-                BasicText(
-                    if (busy) "добавляю…" else "Добавить видео",
-                    style = TextStyle(color = p.tx, fontSize = 16.sp, fontWeight = FontWeight.Medium),
-                )
+            ActionButton(p, R.drawable.ic_plus, if (busy) "добавляю…" else "Добавить видео") {
+                if (!busy) picker.launch(arrayOf("video/*"))
             }
         }
+    }
+}
+
+/** одинаковая кнопка во всю ширину: иконка в рамке фиксированного размера, текст в одну строку */
+@Composable
+private fun ActionButton(p: Palette, icon: Int, text: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp))
+            .background(p.tx.copy(alpha = 0.06f)).press(onClick).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            Image(painterResource(icon), null, Modifier.size(22.dp), colorFilter = ColorFilter.tint(p.ac))
+        }
+        Spacer(Modifier.width(10.dp))
+        BasicText(
+            text, maxLines = 1, softWrap = false,
+            style = TextStyle(color = p.tx, fontSize = 16.sp, fontWeight = FontWeight.Medium),
+        )
     }
 }
 
